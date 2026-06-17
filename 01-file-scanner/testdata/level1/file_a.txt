@@ -1,0 +1,2 @@
+File A in level1 directory.
+This file tests scanning in subdirectories.
