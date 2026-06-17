@@ -1,0 +1,66 @@
+12-testing-practice/calculator/calc.go
+  s_e22ef8bf1c6e07::t_cc92f61a3cb5eb 1-32
+08-mini-http-framework/framework/middleware.go
+  s_e22ef8bf1c6e07::t_56cd7258118b14 1-49
+09-grpc-service/server/main.go
+  s_e22ef8bf1c6e07::t_b906febb97652a 1-110
+11-rest-api-db/handler/todo.go
+  s_e22ef8bf1c6e07::t_e90bba2ffee4e8 1-148
+12-testing-practice/api/handler.go
+  s_e22ef8bf1c6e07::t_ad10d4168c3f82 1-108
+08-mini-http-framework/main.go
+  s_e22ef8bf1c6e07::t_12ad70dc534663 1-47
+09-grpc-service/client/main.go
+  s_e22ef8bf1c6e07::t_07a86966651eda 1-50
+11-rest-api-db/store/store.go
+  s_e22ef8bf1c6e07::t_a0dc72ebedd6a9 1-25
+09-grpc-service/proto/todo.proto
+  s_e22ef8bf1c6e07::t_0f4d005cf0fd08 1-30
+11-rest-api-db/main.go
+  s_e22ef8bf1c6e07::t_1afac224cc2f13 1-26
+12-testing-practice/api/handler_test.go
+  s_e22ef8bf1c6e07::t_ce9150c3232f74 1-110
+10-cli-tool/cmd/files.go
+  s_e22ef8bf1c6e07::t_6848a59642a4c0 1-145
+11-rest-api-db/model/todo.go
+  s_e22ef8bf1c6e07::t_de3bcfddf14219 1-41
+10-cli-tool/main.go
+  s_e22ef8bf1c6e07::t_c64ba5f2f36653 1-9
+08-mini-http-framework/framework/context.go
+  s_e22ef8bf1c6e07::t_f0e8188eca46fc 1-83
+go.mod
+  s_e22ef8bf1c6e07::t_90617ba2c8c3bb 4-30
+README.md
+  s_e22ef8bf1c6e07::t_1ec75589395d8a 1,3,11-12,23-32
+  s_e22ef8bf1c6e07::t_0894b504798786 128-183,186-270,273-274,276-284,290-291,294-296
+10-cli-tool/cmd/root.go
+  s_e22ef8bf1c6e07::t_9ef71762caca81 1-60
+12-testing-practice/calculator/calc_test.go
+  s_e22ef8bf1c6e07::t_f2f004fd478ce2 1-94
+13-pprof-profiling/main.go
+  s_e22ef8bf1c6e07::t_c6a62ec7d360ac 1-120
+08-mini-http-framework/framework/router.go
+  s_e22ef8bf1c6e07::t_06d921aca0be08 1-111
+08-mini-http-framework/framework/engine.go
+  s_e22ef8bf1c6e07::t_8fd1d7b43ce8da 1-72
+11-rest-api-db/store/sqlite.go
+  s_e22ef8bf1c6e07::t_34e4a274b2cf11 1-90
+10-cli-tool/cmd/ports.go
+  s_e22ef8bf1c6e07::t_f0fb3730db868e 1-107
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.11",
+  "base_commit_sha": "9a39b46fc182a73e06bcb6a5d7995bb31819047e",
+  "prompts": {},
+  "sessions": {
+    "s_e22ef8bf1c6e07": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aa2e0e0e-cdba-49b0-b173-ce778c9ca873",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "mingzhou <mingzhou@tsign.cn>"
+    }
+  }
+}
