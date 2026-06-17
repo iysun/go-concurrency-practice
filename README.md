@@ -1,12 +1,14 @@
-# Go 并发实战练习
+# Go 实战练习
 
-七个由浅入深的 Go 实战项目，专项训练 goroutine、channel 及并发原语的实际运用。
+十三个由浅入深的 Go 实战项目，覆盖并发、Web、CLI、数据库、测试、性能分析等核心方向。
 
 每个项目的骨架代码已就位，带有 `// TODO` 标注，**你只需要填空**。
 
 ---
 
 ## 项目列表
+
+### Part 1 — 并发基础
 
 | # | 项目 | 核心练习点 | 难度 |
 |---|------|-----------|------|
@@ -17,6 +19,17 @@
 | 05 | [chat-room](./05-chat-room/) | goroutine 生命周期、net.Conn、事件循环 | ★★★ |
 | 06 | [task-scheduler](./06-task-scheduler/) | time.Ticker、context 传播、panic 恢复 | ★★★ |
 | 07 | [kv-store](./07-kv-store/) | sync.RWMutex、TCP 协议解析、TTL 淘汰 | ★★★ |
+
+### Part 2 — Web、CLI、数据库、测试
+
+| # | 项目 | 核心练习点 | 难度 |
+|---|------|-----------|------|
+| 08 | [mini-http-framework](./08-mini-http-framework/) | Trie 路由、中间件链、Handler 接口 | ★★☆ |
+| 09 | [grpc-service](./09-grpc-service/) | protobuf、gRPC server/client、拦截器 | ★★★ |
+| 10 | [cli-tool](./10-cli-tool/) | cobra 子命令、viper 配置、goroutine 池扫描 | ★★☆ |
+| 11 | [rest-api-db](./11-rest-api-db/) | database/sql、Repository 模式、迁移 | ★★★ |
+| 12 | [testing-practice](./12-testing-practice/) | 表驱动测试、httptest、Benchmark | ★★☆ |
+| 13 | [pprof-profiling](./13-pprof-profiling/) | CPU/内存/goroutine 泄漏定位与修复 | ★★★ |
 
 ---
 
@@ -112,25 +125,172 @@
 
 ---
 
-## 调试技巧
+---
+
+### 第五周 — Web 框架原理
+
+**目标：** 理解 `net/http` Handler 接口，手写路由和中间件，看懂 gin/echo 的设计。
+
+#### 08-mini-http-framework（3–4 天）
+
+- [ ] 实现 `router.go` 的 `node.insert()`：将路径按 `/` 分段插入 trie
+- [ ] 实现 `node.search()`：静态节点优先匹配，wildcard 节点捕获参数
+- [ ] 实现 `middleware.go` 的 `Logger()`：在 `c.Next()` 前后记录耗时
+- [ ] 实现 `middleware.go` 的 `Recovery()`：`defer + recover()` 捕获 panic
+- [ ] 实现 `Context.String()`：用 `fmt.Fprintf` 写入响应
+
+**完成标志：** `GET /user/:id` 能正确捕获 id 参数，`/panic` 路由触发后服务器不崩溃。
+
+---
+
+### 第六周 — gRPC
+
+**目标：** 掌握 protobuf 定义接口，理解 gRPC 与 REST 的设计差异，学会拦截器。
+
+#### 09-grpc-service（4–5 天）
+
+**前置步骤（先做这个）：**
+```bash
+go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+mkdir 09-grpc-service/pb
+protoc --go_out=./09-grpc-service/pb --go-grpc_out=./09-grpc-service/pb \
+       --proto_path=./09-grpc-service/proto \
+       ./09-grpc-service/proto/todo.proto
+go get google.golang.org/grpc
+# 然后删除 server/main.go 和 client/main.go 顶部的 //go:build ignore
+```
+
+- [ ] 实现 `GetTodo`：RLock 读 map，`sql.ErrNoRows` 类比返回 `codes.NotFound`
+- [ ] 实现 `ListTodos`：遍历 map，返回 repeated Todo
+- [ ] 实现 `UpdateTodo`：Lock 写 map，找不到返回 `codes.NotFound`
+- [ ] 实现 `DeleteTodo`：Lock 删 map
+- [ ] 完善 `loggingInterceptor`：记录 method、duration、error
+
+**完成标志：** 同时运行 server 和 client，client 能完成 Create → List → Update → Delete 全流程。
+
+---
+
+### 第七周 — CLI 工具
+
+**目标：** 掌握 cobra 子命令体系和 viper 配置加载，写出专业级 CLI。
+
+#### 10-cli-tool（3 天）
+
+- [ ] 在 `ports.go` 的 `runPortScan` 中：收集 `results`，对 open 端口排序后输出
+- [ ] 在 `files.go` 的 `runFind` 中：实现 `--size-min` / `--size-max` 过滤
+- [ ] 在 `files.go` 的 `runRename` 中：实现非 dry-run 的 `os.Rename`，加冲突检测
+- [ ] 添加一个新子命令 `hash`：计算文件的 MD5/SHA256（练习 cobra 子命令添加）
 
 ```bash
-# 检测数据竞争（每个项目都应跑一遍）
+# 测试命令
+go run ./10-cli-tool ports localhost --start 1 --end 1024
+go run ./10-cli-tool find . --name "*.go"
+go run ./10-cli-tool rename . --pattern "^old_" --replace "new_" --dry-run
+```
+
+**完成标志：** 三个子命令均可运行，`--help` 输出格式专业。
+
+---
+
+### 第八周 — REST API + 数据库
+
+**目标：** 掌握 `database/sql` 接口、Repository 模式、事务，把 08 的框架用起来。
+
+#### 11-rest-api-db（4–5 天）
+
+- [ ] 完善 `store/sqlite.go` 的 `ListTodos`、`UpdateTodo`、`DeleteTodo`
+- [ ] 完善 `handler/todo.go` 的 `updateTodo`、`deleteTodo`
+- [ ] 为 `ListTodos` 添加分页：`?page=1&size=20` 查询参数
+- [ ] 用 `database/sql` 事务实现"批量完成所有 todo"接口
+- [ ] （进阶）将 `net/http` 的 mux 换成 08 的 mini-http-framework
+
+**测试方式：**
+```bash
+go run ./11-rest-api-db/
+curl -X POST localhost:8081/todos -d '{"title":"buy milk"}'
+curl localhost:8081/todos
+curl -X PATCH localhost:8081/todos/1 -d '{"done":true}'
+curl -X DELETE localhost:8081/todos/1
+```
+
+**完成标志：** 五个接口全部实现，重启服务后数据仍然存在（SQLite 持久化）。
+
+---
+
+### 第九周 — 测试
+
+**目标：** 掌握 Go 测试的三种核心模式，养成测试先行的习惯。
+
+#### 12-testing-practice（3 天）
+
+- [ ] 实现 `calculator/calc.go` 的 `Fibonacci()`，让 `TestFibonacci` 通过
+- [ ] 完成 `api/handler_test.go` 的 `TestList_Empty`：断言响应体是 `[]` 而非 `null`
+- [ ] 完成 `TestMethodNotAllowed`：发送 DELETE /items，期望 405
+- [ ] 为 `Fibonacci` 添加递归实现，用 `BenchmarkFibonacci` 对比性能
+
+```bash
+go test ./12-testing-practice/...          # 跑所有测试
+go test -bench=. ./12-testing-practice/calculator/  # 跑 Benchmark
+go test -race ./12-testing-practice/...    # 竞争检测
+```
+
+**完成标志：** `go test ./...` 全绿，Benchmark 数据显示迭代实现比递归快 100x+。
+
+---
+
+### 第十周 — 性能分析
+
+**目标：** 用 pprof 找出真实性能问题，建立"测量再优化"的习惯。
+
+#### 13-pprof-profiling（3 天）
+
+代码中预置了三个性能问题，用 pprof 逐一找到并修复：
+
+- [ ] **CPU 热点**：用 CPU profile 定位 `inefficientFib`，改为迭代实现
+- [ ] **内存泄漏**：用 heap profile 定位 `leakyCache`，添加最大容量限制
+- [ ] **goroutine 泄漏**：用 goroutine profile 找到卡在 `<-ch` 的泄漏，用 context 修复
+- [ ] 实现 `/stats` 接口：返回 `runtime.NumGoroutine()` 和 `runtime.MemStats`
+
+```bash
+go run ./13-pprof-profiling/
+# 另一个终端
+curl localhost:6060/leak       # 触发泄漏
+go tool pprof http://localhost:6060/debug/pprof/goroutine
+# pprof shell 内: top10 / web / list startLeakyWorker
+```
+
+**完成标志：** 三个问题全部修复后，反复调用对应接口，goroutine 数量和内存不再持续增长。
+
+---
+
+## 调试工具速查
+
+```bash
+# 竞争检测（每个项目都应跑一遍）
 go run -race ./<project>/
 
-# 查看当前 goroutine 数量（在代码里加）
-fmt.Println(runtime.NumGoroutine())
+# 查看 goroutine 数量
+import "runtime"; fmt.Println(runtime.NumGoroutine())
 
-# pprof goroutine 分析（适合 05~07 这类常驻服务）
-import _ "net/http/pprof"
-go http.ListenAndServe(":6060", nil)
-# 然后访问 http://localhost:6060/debug/pprof/goroutine?debug=1
+# pprof 三件套（在运行中的服务上执行）
+go tool pprof http://localhost:6060/debug/pprof/profile?seconds=10  # CPU
+go tool pprof http://localhost:6060/debug/pprof/heap                # 内存
+go tool pprof http://localhost:6060/debug/pprof/goroutine           # goroutine
+
+# 运行测试
+go test ./...                    # 全部测试
+go test -v -run TestXxx ./pkg/   # 指定测试
+go test -bench=. -benchmem ./... # Benchmark + 内存分配统计
 ```
 
 ## 推荐顺序
 
 ```
-01 → 02 → 03 → 04 → 05 → 06 → 07
+Part 1 并发:  01 → 02 → 03 → 04 → 05 → 06 → 07
+Part 2 工程:  08 → 10 → 09 → 11 → 12 → 13
 ```
 
-每个项目完成后，回顾一次骨架代码里的 TODO 注释，确保理解为什么这样设计而不是另一种写法。
+Part 2 建议先做 08（框架原理）和 10（CLI），再做 09（gRPC 需要额外工具链），最后 11 可以复用 08 的框架——串联起来更有成就感。
+
+每个项目完成后，回顾骨架里的 TODO 注释，思考为什么这样设计而不是另一种写法。

@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package todo;
+option go_package = "go-concurrency-practice/09-grpc-service/pb";
+
+// TodoService provides CRUD operations for todo items.
+service TodoService {
+  rpc CreateTodo (CreateTodoRequest)  returns (TodoResponse);
+  rpc GetTodo    (GetTodoRequest)     returns (TodoResponse);
+  rpc ListTodos  (ListTodosRequest)   returns (ListTodosResponse);
+  rpc UpdateTodo (UpdateTodoRequest)  returns (TodoResponse);
+  rpc DeleteTodo (DeleteTodoRequest)  returns (DeleteTodoResponse);
+}
+
+message Todo {
+  int64  id        = 1;
+  string title     = 2;
+  bool   done      = 3;
+  string created_at = 4;
+}
+
+message CreateTodoRequest  { string title = 1; }
+message GetTodoRequest     { int64 id = 1; }
+message ListTodosRequest   {}
+message UpdateTodoRequest  { int64 id = 1; bool done = 2; }
+message DeleteTodoRequest  { int64 id = 1; }
+
+message TodoResponse       { Todo todo = 1; }
+message ListTodosResponse  { repeated Todo todos = 1; }
+message DeleteTodoResponse { bool success = 1; }
