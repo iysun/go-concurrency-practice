@@ -57,10 +57,10 @@
 
 #### 02-web-crawler（3–4 天）
 
-- [ ] 实现 `fetch()`：HTTP GET + 解析 `<a href>` 链接（推荐用 `golang.org/x/net/html`）
-- [ ] 实现 `worker()`：sync.Map 去重、过滤非同域链接、深度限制
-- [ ] 处理 `jobs` channel 耗尽时的优雅退出（active worker 计数或额外信号）
-- [ ] 接入 context 超时取消，所有 HTTP 请求都传入 ctx
+- [x] 实现 `fetch()`：HTTP GET + 解析 `<a href>` 链接（推荐用 `golang.org/x/net/html`）
+- [x] 实现 `worker()`：sync.Map 去重、过滤非同域链接、深度限制
+- [x] 处理 `jobs` channel 耗尽时的优雅退出（active worker 计数或额外信号）
+- [x] 接入 context 超时取消，所有 HTTP 请求都传入 ctx
 
 **完成标志：** 爬取 `https://golang.org` 到深度 2，能在 30 秒超时内正常退出。
 
