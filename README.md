@@ -41,11 +41,11 @@
 
 #### 01-file-scanner（2–3 天）
 
-- [ ] 实现 `worker()`：从 `jobs` 读取目录、列出条目、递归入队子目录
-- [ ] 实现文件信息收集，将 `Result` 发送到 `results` channel
-- [ ] 处理 `jobs` channel 满时的背压（hint：带 select 的非阻塞发送）
-- [ ] 使用 `runtime.NumGoroutine()` 验证没有 goroutine 泄漏
-- [ ] 加入 `-race` 检测：`go run -race ./01-file-scanner`
+- [x] 实现 `worker()`：从 `jobs` 读取目录、列出条目、递归入队子目录
+- [x] 实现文件信息收集，将 `Result` 发送到 `results` channel
+- [x] 处理 `jobs` channel 满时的背压（hint：带 select 的非阻塞发送）
+- [x] 使用 `runtime.NumGoroutine()` 验证没有 goroutine 泄漏
+- [x] 加入 `-race` 检测：`go run -race ./01-file-scanner`
 
 **完成标志：** 能扫描 1000+ 文件的目录树，goroutine 数量稳定不增长。
 
