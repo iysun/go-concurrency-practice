@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"sync"
+	"testing"
 	"time"
 )
 
@@ -20,7 +21,7 @@ func pay(name string, money int, wait *sync.WaitGroup) {
 	wait.Done()
 }
 
-func main() {
+func TestOne(t *testing.T) {
 	var wait sync.WaitGroup
 	startTime := time.Now()
 	wait.Add(4)
