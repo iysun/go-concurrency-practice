@@ -39,8 +39,12 @@ func NewCrawler(baseURL string, maxDepth, concurrency int) *Crawler {
 }
 
 // fetch downloads a page and returns all href links found on it.
-func (c *Crawler) fetch(pageURL string) ([]string, error) {
-	resp, err := c.client.Get(pageURL)
+func (c *Crawler) fetch(ctx context.Context, pageURL string) ([]string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pageURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("fetch err: %w", err)
 	}
@@ -69,14 +73,14 @@ func (c *Crawler) worker(ctx context.Context, wg *sync.WaitGroup) {
 			if !ok {
 				return
 			}
-			c.process(j)
+			c.process(ctx, j)
 		}
 	}
 }
 
 // process handles a single job. It calls pending.Done exactly once on every
 // exit path so the pending counter reaches zero when the frontier drains.
-func (c *Crawler) process(j job) {
+func (c *Crawler) process(ctx context.Context, j job) {
 	defer c.pending.Done()
 
 	if j.depth > c.maxDepth {
@@ -87,19 +91,25 @@ func (c *Crawler) process(j job) {
 	}
 	c.results <- j.url
 
-	links, err := c.fetch(j.url)
+	links, err := c.fetch(ctx, j.url)
 	if err != nil {
 		log.Printf("fetch %s: %v", j.url, err)
 		return
 	}
 	for _, l := range links {
-		c.enqueue(job{url: l, depth: j.depth + 1})
+		c.enqueue(ctx, job{url: l, depth: j.depth + 1})
 	}
 }
 
-func (c *Crawler) enqueue(j job) {
+func (c *Crawler) enqueue(ctx context.Context, j job) {
 	c.pending.Add(1)
-	c.jobs <- j
+	select {
+	case c.jobs <- j:
+	case <-ctx.Done():
+		// ctx 取消时发送可能永久阻塞（buffer 满 + worker 已退出），
+		// 这里走 ctx 分支并撤销刚才的 Add，避免 pending 计数泄漏。
+		c.pending.Done()
+	}
 }
 
 // Crawl seeds the root URL and fans out workers.
@@ -110,7 +120,7 @@ func (c *Crawler) Crawl(ctx context.Context) []string {
 		go c.worker(ctx, &wg)
 	}
 
-	c.enqueue(job{url: c.baseURL, depth: 0})
+	c.enqueue(ctx, job{url: c.baseURL, depth: 0})
 
 	go func() {
 		c.pending.Wait()
