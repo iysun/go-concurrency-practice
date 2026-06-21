@@ -8,6 +8,8 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"sync/atomic"
+	"time"
 )
 
 // var defaultChunks = runtime.NumCPU()
@@ -21,22 +23,19 @@ type Chunk struct {
 }
 
 // Progress tracks download progress across chunks.
+// downloaded is updated on the hot path via atomics (no lock, no I/O);
+// a separate ticker goroutine reads it to print at a fixed interval.
 type Progress struct {
-	mu         sync.Mutex
-	downloaded int64
+	downloaded atomic.Int64
 	totalSize  int64
 }
 
 func (p *Progress) add(n int64) {
-	p.mu.Lock()
-	p.downloaded += n
-	p.mu.Unlock()
+	p.downloaded.Add(n)
 }
 
 func (p *Progress) print() {
-	p.mu.Lock()
-	pct := float64(p.downloaded) / float64(p.totalSize) * 100
-	p.mu.Unlock()
+	pct := float64(p.downloaded.Load()) / float64(p.totalSize) * 100
 	fmt.Printf("\rProgress: %.1f%%", pct)
 }
 
@@ -49,7 +48,17 @@ type Downloader struct {
 }
 
 func NewDownloader(url, dest string, chunks int) *Downloader {
-	return &Downloader{url: url, dest: dest, numChunks: chunks, client: &http.Client{}}
+	// Let the transport keep one idle connection per concurrent chunk so
+	// connections are reused instead of being closed and re-dialed.
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.MaxIdleConns = chunks
+	tr.MaxIdleConnsPerHost = chunks
+	return &Downloader{
+		url:       url,
+		dest:      dest,
+		numChunks: chunks,
+		client:    &http.Client{Transport: tr},
+	}
 }
 
 // getContentLength sends a HEAD request to determine file size.
@@ -113,7 +122,7 @@ func (d *Downloader) downloadChunk(ctx context.Context, c Chunk, f *os.File, p *
 	// while io.Copy streams directly to the file.
 	written, err := io.Copy(
 		NewSectionWriter(f, c.start),
-		io.TeeReader(resp.Body, &progressWriter{w: io.Discard, p: p}),
+		io.TeeReader(resp.Body, &progressWriter{p: p}),
 	)
 	if err != nil {
 		return err
@@ -124,7 +133,6 @@ func (d *Downloader) downloadChunk(ctx context.Context, c Chunk, f *os.File, p *
 		return fmt.Errorf("分片 %d 数据长度不匹配: 期望 %d, 实际 %d", c.index, expectedLen, written)
 	}
 
-	fmt.Printf("分片 %d 下载完成: %d-%d (大小: %d bytes)\n", c.index, c.start, c.end, written)
 	return nil
 }
 
@@ -149,6 +157,23 @@ func (d *Downloader) Download(ctx context.Context) error {
 	progress := &Progress{totalSize: size}
 	chunkSize := size / int64(d.numChunks)
 
+	// Print progress at a fixed interval instead of on every block,
+	// keeping terminal I/O off the download hot path.
+	done := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(200 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				progress.print()
+			case <-done:
+				progress.print() // final 100%
+				return
+			}
+		}
+	}()
+
 	var wg sync.WaitGroup
 	errs := make(chan error, d.numChunks)
 
@@ -168,6 +193,7 @@ func (d *Downloader) Download(ctx context.Context) error {
 	}
 
 	wg.Wait()
+	close(done)
 	close(errs)
 	fmt.Println()
 
@@ -178,17 +204,15 @@ func (d *Downloader) Download(ctx context.Context) error {
 	return nil
 }
 
-// progressWriter reports bytes written to Progress.
+// progressWriter only accumulates the byte count on the hot path.
+// It performs no terminal I/O — printing is done by a ticker goroutine.
 type progressWriter struct {
-	w io.Writer
 	p *Progress
 }
 
 func (pw *progressWriter) Write(b []byte) (int, error) {
-	n, err := pw.w.Write(b)
-	pw.p.add(int64(n))
-	pw.p.print()
-	return n, err
+	pw.p.add(int64(len(b)))
+	return len(b), nil
 }
 
 // sectionWriter adapts os.File.WriteAt to io.Writer at a fixed offset.
