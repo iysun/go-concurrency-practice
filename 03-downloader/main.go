@@ -6,10 +6,12 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"sync"
 )
 
-const defaultChunks = 4
+// var defaultChunks = runtime.NumCPU()
+var defaultChunks = 32
 
 // Chunk represents one slice of the file to download.
 type Chunk struct {
@@ -20,9 +22,9 @@ type Chunk struct {
 
 // Progress tracks download progress across chunks.
 type Progress struct {
-	mu          sync.Mutex
-	downloaded  int64
-	totalSize   int64
+	mu         sync.Mutex
+	downloaded int64
+	totalSize  int64
 }
 
 func (p *Progress) add(n int64) {
@@ -40,10 +42,10 @@ func (p *Progress) print() {
 
 // Downloader fetches a file in parallel chunks using HTTP Range requests.
 type Downloader struct {
-	url        string
-	dest       string
-	numChunks  int
-	client     *http.Client
+	url       string
+	dest      string
+	numChunks int
+	client    *http.Client
 }
 
 func NewDownloader(url, dest string, chunks int) *Downloader {
@@ -52,22 +54,78 @@ func NewDownloader(url, dest string, chunks int) *Downloader {
 
 // getContentLength sends a HEAD request to determine file size.
 // Returns 0 if server doesn't support Range requests.
-// TODO: implement
 func (d *Downloader) getContentLength() (int64, error) {
 	// hint: use http.MethodHead and check Accept-Ranges header
-	return 0, fmt.Errorf("not implemented")
+	req, err := http.NewRequest(http.MethodHead, d.url, nil)
+	if err != nil {
+		return 0, err
+	}
+
+	resp, err := d.client.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	acceptRanges := resp.Header.Get("Accept-Ranges")
+	supportsRange := acceptRanges == "bytes"
+
+	if !supportsRange {
+		return 0, fmt.Errorf("服务器不支持 Range 请求，无法进行分片下载")
+	}
+	contentLength := resp.Header.Get("Content-Length")
+
+	if contentLength == "" {
+		return 0, fmt.Errorf("服务器未返回 Content-Length")
+	}
+
+	fileSize, err := strconv.ParseInt(contentLength, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+
+	fmt.Printf("文件大小: %d bytes (%.2f MB), 支持分片下载\n",
+		fileSize, float64(fileSize)/(1024*1024))
+
+	return fileSize, nil
 }
 
 // downloadChunk fetches bytes [c.start, c.end] and writes them
 // into the correct offset of the output file.
-// TODO: implement
 func (d *Downloader) downloadChunk(ctx context.Context, c Chunk, f *os.File, p *Progress) error {
-	// hint: set "Range: bytes=start-end" header
-	// hint: use io.Copy with a progress-tracking writer
-	_ = c
-	_ = f
-	_ = p
-	return fmt.Errorf("not implemented")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, d.url, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", c.start, c.end))
+
+	resp, err := d.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("分片 %d 相应异常: %s", c.index, resp.Status)
+	}
+
+	// TeeReader duplicates data to progressWriter for tracking,
+	// while io.Copy streams directly to the file.
+	written, err := io.Copy(
+		NewSectionWriter(f, c.start),
+		io.TeeReader(resp.Body, &progressWriter{w: io.Discard, p: p}),
+	)
+	if err != nil {
+		return err
+	}
+
+	expectedLen := c.end - c.start + 1
+	if written != expectedLen {
+		return fmt.Errorf("分片 %d 数据长度不匹配: 期望 %d, 实际 %d", c.index, expectedLen, written)
+	}
+
+	fmt.Printf("分片 %d 下载完成: %d-%d (大小: %d bytes)\n", c.index, c.start, c.end, written)
+	return nil
 }
 
 // Download splits the file into chunks and downloads them concurrently.
@@ -120,7 +178,7 @@ func (d *Downloader) Download(ctx context.Context) error {
 	return nil
 }
 
-// progressWriter wraps an io.Writer and reports bytes written to Progress.
+// progressWriter reports bytes written to Progress.
 type progressWriter struct {
 	w io.Writer
 	p *Progress
@@ -133,6 +191,25 @@ func (pw *progressWriter) Write(b []byte) (int, error) {
 	return n, err
 }
 
+// sectionWriter adapts os.File.WriteAt to io.Writer at a fixed offset.
+type sectionWriter struct {
+	f      *os.File
+	offset int64
+}
+
+func (sw *sectionWriter) Write(b []byte) (int, error) {
+	n, err := sw.f.WriteAt(b, sw.offset)
+	sw.offset += int64(n)
+	return n, err
+}
+
+// 这个其实可以使用 go 1.20+ 的 io.offsetWriter 替换
+func NewSectionWriter(f *os.File, off int64) *sectionWriter {
+	return &sectionWriter{f: f, offset: off}
+}
+
+// https://dl.testfile.cc/100mb.dat
+// go run .\03-downloader\ https://dl.testfile.cc/100mb.dat 100mb.dat
 func main() {
 	if len(os.Args) < 3 {
 		fmt.Println("Usage: downloader <url> <output-file>")

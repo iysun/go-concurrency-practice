@@ -66,10 +66,10 @@
 
 #### 03-downloader（2–3 天）
 
-- [ ] 实现 `getContentLength()`：HEAD 请求 + `Content-Length` 解析
-- [ ] 实现 `downloadChunk()`：`Range: bytes=N-M` 请求 + WriteAt 写入正确偏移
-- [ ] 实现 `progressWriter`：包装 Writer，每次 Write 更新进度条
-- [ ] 验证下载文件 MD5 与原始文件一致
+- [x] 实现 `getContentLength()`：HEAD 请求 + `Content-Length` 解析
+- [x] 实现 `downloadChunk()`：`Range: bytes=N-M` 请求 + WriteAt 写入正确偏移
+- [x] 实现 `progressWriter`：包装 Writer，每次 Write 更新进度条
+- [x] 验证下载文件 MD5 与原始文件一致
 
 **完成标志：** 下载一个 100 MB 文件，速度明显快于单线程，进度实时显示。
 
