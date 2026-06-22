@@ -81,10 +81,10 @@
 
 #### 04-message-queue（2 天）
 
-- [ ] 实现 `Subscribe()`：创建 Subscriber，注册到 map
-- [ ] 实现 `Unsubscribe()`：从 map 删除，关闭 channel
-- [ ] 实现 `Close()`：关闭所有 subscriber channel，让消费者 range 循环退出
-- [ ] 用 `go test -race` 验证无数据竞争
+- [x] 实现 `Subscribe()`：创建 Subscriber，注册到 map
+- [x] 实现 `Unsubscribe()`：从 map 删除，关闭 channel
+- [x] 实现 `Close()`：关闭所有 subscriber channel，让消费者 range 循环退出
+- [x] 用 `go test -race` 验证无数据竞争
 
 **完成标志：** 5 个 subscriber 并发消费，任意 subscriber 退出不影响其他人。
 

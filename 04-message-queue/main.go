@@ -36,26 +36,31 @@ func NewBroker() *Broker {
 
 // Subscribe registers a new subscriber for the given topics.
 // Returns the Subscriber so the caller can read from it.
-// TODO: implement
 func (b *Broker) Subscribe(bufSize int, topics ...string) *Subscriber {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	// hint: create Subscriber, add to b.subscribers map
-	_ = bufSize
-	return nil
+	t := make(map[string]struct{})
+	for _, v := range topics {
+		t[v] = struct{}{}
+	}
+	subscriber := &Subscriber{id: b.nextID, ch: make(chan Message, bufSize), topics: t}
+
+	b.subscribers[b.nextID] = subscriber
+	b.nextID++
+
+	return subscriber
 }
 
 // Unsubscribe removes a subscriber and closes its channel.
-// TODO: implement
 func (b *Broker) Unsubscribe(sub *Subscriber) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	// hint: delete from map, close sub.ch
+	delete(b.subscribers, sub.id)
+	close(sub.ch)
 }
 
 // Publish sends msg to every subscriber whose topics include msg.Topic.
 // Non-blocking: if a subscriber's channel is full, the message is dropped for that subscriber.
-// TODO: implement
 func (b *Broker) Publish(msg Message) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
@@ -71,8 +76,14 @@ func (b *Broker) Publish(msg Message) {
 }
 
 // Close shuts down the broker and all subscriber channels.
-// TODO: implement
-func (b *Broker) Close() {}
+func (b *Broker) Close() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for _, sub := range b.subscribers {
+		close(sub.ch)
+	}
+	b.subscribers = make(map[int]*Subscriber)
+}
 
 func main() {
 	broker := NewBroker()
