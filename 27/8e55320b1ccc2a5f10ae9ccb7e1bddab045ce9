@@ -1,0 +1,20 @@
+04-message-queue/main.go
+  s_addaacbc0269b7::t_7f15408890020e 58-59
+  s_addaacbc0269b7::t_cd29aa0644395b 80-85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.11",
+  "base_commit_sha": "278e55320b1ccc2a5f10ae9ccb7e1bddab045ce9",
+  "prompts": {},
+  "sessions": {
+    "s_addaacbc0269b7": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_112a1e546ffeEL3QwUsJB7ZAPQ",
+        "model": "unknown"
+      },
+      "human_author": "mingzhou <mingzhou@tsign.cn>"
+    }
+  }
+}
