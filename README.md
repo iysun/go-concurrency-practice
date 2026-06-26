@@ -90,11 +90,11 @@
 
 #### 05-chat-room（3–4 天）
 
-- [ ] 实现 `Room.Run()` 的 leave 分支：删除 client、关闭 send channel
-- [ ] 实现 `writePump()`：range send channel，写入 conn，出错则返回
-- [ ] 加入 `/quit` 命令让用户主动断开
-- [ ] 加入 `/list` 命令显示当前在线用户数
-- [ ] 用 `telnet localhost 9000` 多窗口测试
+- [x] 实现 `Room.Run()` 的 leave 分支：删除 client、关闭 send channel
+- [x] 实现 `writePump()`：range send channel，写入 conn，出错则返回
+- [x] 加入 `/quit` 命令让用户主动断开
+- [x] 加入 `/list` 命令显示当前在线用户数
+- [x] 用 `telnet localhost 9000` 多窗口测试
 
 **完成标志：** 3 个终端同时聊天，任一断开不影响其他连接。
 

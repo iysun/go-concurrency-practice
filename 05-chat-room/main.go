@@ -6,7 +6,6 @@ import (
 	"log"
 	"net"
 	"strings"
-	"sync"
 )
 
 // Client represents a connected chat user.
@@ -22,25 +21,25 @@ func (c *Client) String() string {
 
 // Room manages all connected clients and broadcasts messages.
 type Room struct {
-	mu      sync.RWMutex
-	clients map[*Client]struct{}
-	join    chan *Client
-	leave   chan *Client
-	message chan string
+	clients   map[*Client]struct{}
+	join      chan *Client
+	leave     chan *Client
+	message   chan string
+	listQuery chan chan []string
 }
 
 func NewRoom() *Room {
 	return &Room{
-		clients: make(map[*Client]struct{}),
-		join:    make(chan *Client),
-		leave:   make(chan *Client),
-		message: make(chan string, 64),
+		clients:   make(map[*Client]struct{}),
+		join:      make(chan *Client),
+		leave:     make(chan *Client),
+		message:   make(chan string, 64),
+		listQuery: make(chan chan []string),
 	}
 }
 
 // Run is the Room's event loop — the single goroutine that mutates r.clients.
 // All join/leave/broadcast actions pass through this loop to avoid data races.
-// TODO: implement
 func (r *Room) Run() {
 	for {
 		select {
@@ -48,10 +47,16 @@ func (r *Room) Run() {
 			r.clients[c] = struct{}{}
 			r.broadcast(fmt.Sprintf("*** %s joined ***", c.nickname))
 		case c := <-r.leave:
-			// TODO: delete client, close send channel
-			_ = c
+			delete(r.clients, c)
+			close(c.send)
 		case msg := <-r.message:
 			r.broadcast(msg)
+		case ch := <-r.listQuery:
+			var names []string
+			for c := range r.clients {
+				names = append(names, c.nickname)
+			}
+			ch <- names
 		}
 	}
 }
@@ -68,8 +73,6 @@ func (r *Room) broadcast(msg string) {
 	}
 }
 
-// writePump reads from c.send and writes to the TCP connection.
-// TODO: implement — runs in its own goroutine per client
 func writePump(c *Client) {
 	for msg := range c.send {
 		_, err := fmt.Fprintln(c.conn, msg)
@@ -81,7 +84,6 @@ func writePump(c *Client) {
 
 // readPump reads lines from the TCP connection and forwards them to the room.
 // Signals departure on disconnect.
-// TODO: implement — runs in its own goroutine per client
 func readPump(c *Client, room *Room) {
 	defer func() {
 		room.leave <- c
@@ -92,6 +94,17 @@ func readPump(c *Client, room *Room) {
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
+			continue
+		} else if line == "/quit" {
+			return
+		} else if line == "/list" {
+			ch := make(chan []string)
+			room.listQuery <- ch
+			names := <-ch
+			fmt.Fprintf(c.conn, "Online users (%d):\n", len(names))
+			for _, name := range names {
+				fmt.Fprintf(c.conn, "  - %s\n", name)
+			}
 			continue
 		}
 		room.message <- fmt.Sprintf("%s: %s", c.nickname, line)
