@@ -8,18 +8,21 @@ import (
 	"strings"
 )
 
-// Client represents a connected chat user.
+// 客户端负责维护链接, send 接收来自 room 的广播
+// 然后将接收到的message通过 Fprintf 往 conn 中写
 type Client struct {
-	conn     net.Conn
 	nickname string
-	send     chan string // outgoing messages for this client
+	send     chan string
+	conn     net.Conn
 }
 
 func (c *Client) String() string {
 	return c.nickname
 }
 
-// Room manages all connected clients and broadcasts messages.
+// room 维护所有的 client 集合
+// 监听 leave join message 事件
+// listQuery 用于解决 clients 读写冲突问题
 type Room struct {
 	clients   map[*Client]struct{}
 	join      chan *Client
@@ -38,8 +41,9 @@ func NewRoom() *Room {
 	}
 }
 
-// Run is the Room's event loop — the single goroutine that mutates r.clients.
-// All join/leave/broadcast actions pass through this loop to avoid data races.
+// room 核心 run 函数
+// 通过 leave join message 三个 channal 监听所有客户端状态和信息
+// listQuery 分支通过将遍历读取 clients 逻辑放在修改 clients 逻辑的同一个 select 中解决读写冲突问题
 func (r *Room) Run() {
 	for {
 		select {
@@ -49,6 +53,7 @@ func (r *Room) Run() {
 		case c := <-r.leave:
 			delete(r.clients, c)
 			close(c.send)
+			r.broadcast(fmt.Sprintf("*** %s leaved ***", c.nickname))
 		case msg := <-r.message:
 			r.broadcast(msg)
 		case ch := <-r.listQuery:
@@ -59,20 +64,21 @@ func (r *Room) Run() {
 			ch <- names
 		}
 	}
+
 }
 
-// broadcast sends msg to every connected client's send channel.
-// Must only be called from within Run().
+// 遍历 clients 向所有 client 的 send 中发送消息
 func (r *Room) broadcast(msg string) {
 	for c := range r.clients {
 		select {
 		case c.send <- msg:
 		default:
-			// slow client — drop message
 		}
+
 	}
 }
 
+// client 接收到消息后想入 conn
 func writePump(c *Client) {
 	for msg := range c.send {
 		_, err := fmt.Fprintln(c.conn, msg)
@@ -82,8 +88,7 @@ func writePump(c *Client) {
 	}
 }
 
-// readPump reads lines from the TCP connection and forwards them to the room.
-// Signals departure on disconnect.
+// 接收 client conn 的输入，基于输入进行不同的处理
 func readPump(c *Client, room *Room) {
 	defer func() {
 		room.leave <- c
@@ -91,6 +96,7 @@ func readPump(c *Client, room *Room) {
 	}()
 
 	scanner := bufio.NewScanner(c.conn)
+
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
@@ -106,12 +112,13 @@ func readPump(c *Client, room *Room) {
 				fmt.Fprintf(c.conn, "  - %s\n", name)
 			}
 			continue
+		} else {
+			room.message <- fmt.Sprintf("%s: %s", c.nickname, line)
 		}
-		room.message <- fmt.Sprintf("%s: %s", c.nickname, line)
 	}
 }
 
-// handleConn negotiates nickname then starts read/write pumps.
+// 首次链接 注册 client
 func handleConn(conn net.Conn, room *Room) {
 	fmt.Fprint(conn, "Enter nickname: ")
 	scanner := bufio.NewScanner(conn)
@@ -122,32 +129,35 @@ func handleConn(conn net.Conn, room *Room) {
 	}
 
 	c := &Client{
-		conn:     conn,
 		nickname: nick,
+		conn:     conn,
 		send:     make(chan string, 32),
 	}
 
 	room.join <- c
 	go writePump(c)
-	readPump(c, room) // blocks until disconnect
+	readPump(c, room)
 }
 
 func main() {
 	room := NewRoom()
+
 	go room.Run()
 
 	ln, err := net.Listen("tcp", ":9000")
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	log.Println("Chat room listening on :9000")
 
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			log.Println("accept error:", err)
+			log.Println("err: ", err)
 			continue
 		}
 		go handleConn(conn, room)
 	}
+
 }
