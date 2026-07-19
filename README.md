@@ -106,10 +106,10 @@
 
 #### 06-task-scheduler（3 天）
 
-- [ ] 为每次任务执行创建带超时的子 context
-- [ ] 用 `recover()` 捕获任务 panic，记录日志但不崩溃
-- [ ] 实现 `Unregister()`：停止指定任务的 ticker
-- [ ] 添加任务统计：LastRun、RunCount、ErrorCount
+- [x] 为每次任务执行创建带超时的子 context
+- [x] 用 `recover()` 捕获任务 panic，记录日志但不崩溃
+- [x] 实现 `Unregister()`：停止指定任务的 ticker
+- [x] 添加任务统计：LastRun、RunCount、ErrorCount
 
 **完成标志：** 注册一个会 panic 的任务，调度器不崩溃并继续运行其他任务。
 

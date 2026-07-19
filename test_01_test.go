@@ -60,6 +60,5 @@ func TestOne(t *testing.T) {
 
 	fmt.Println("moneyChan", moneyList)
 	fmt.Println("nameChan", nameList)
-
 	fmt.Println("finished", time.Since(startTime))
 }
