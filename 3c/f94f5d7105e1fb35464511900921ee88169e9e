@@ -1,0 +1,19 @@
+07-kv-store/main_test.go
+  s_67b84253a2c85b::t_e348f20b87662d 1-126
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.11",
+  "base_commit_sha": "3cf94f5d7105e1fb35464511900921ee88169e9e",
+  "prompts": {},
+  "sessions": {
+    "s_67b84253a2c85b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fdac8-e3fb-7d82-a128-78e15550ad04",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mingzhou <mingzhou@tsign.cn>"
+    }
+  }
+}
