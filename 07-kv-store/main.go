@@ -3,11 +3,11 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"net"
 	"strings"
 	"sync"
 	"time"
-	"log"
 )
 
 // entry wraps a stored value with an optional expiry.
