@@ -1,0 +1,6 @@
+SET name alice
+SET temporary value 1
+EXPIRE name 1
+SET z last
+SET a first
+DEL a

@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"fmt"
 	"net"
+	"os"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
@@ -121,6 +123,46 @@ func TestServerHandleConnDeleteAndKeys(t *testing.T) {
 	assertExchange(t, client, reader, "KEYS", "z")
 	assertExchange(t, client, reader, "DEL", "ERR usage: DEL key")
 	assertExchange(t, client, reader, "KEYS extra", "ERR usage: KEYS")
+}
+
+func TestServerAOFAppendAndReplay(t *testing.T) {
+	aofPath := filepath.Join(t.TempDir(), "aof.log")
+	srv := NewServerWithAOF(":0", aofPath)
+	client, reader, cleanup := startTestConn(t, srv)
+	defer cleanup()
+
+	assertExchange(t, client, reader, "SET name alice", "OK")
+	assertExchange(t, client, reader, "SET temporary value 60", "OK")
+	assertExchange(t, client, reader, "EXPIRE name 60", "OK")
+	assertExchange(t, client, reader, "DEL temporary", "OK")
+	assertExchange(t, client, reader, "DEL missing", "OK")
+
+	logData, err := os.ReadFile(aofPath)
+	if err != nil {
+		t.Fatalf("reading AOF: %v", err)
+	}
+	wantLog := "SET name alice\nSET temporary value 60\nEXPIRE name 60\nDEL temporary\n"
+	if string(logData) != wantLog {
+		t.Fatalf("AOF = %q, want %q", string(logData), wantLog)
+	}
+
+	restored := NewServerWithAOF(":0", aofPath)
+	if err := restored.replayAOF(); err != nil {
+		t.Fatalf("replaying AOF: %v", err)
+	}
+	if got, ok := restored.store.Get("name"); !ok || got != "alice" {
+		t.Fatalf("restored name = %q, %v; want %q, true", got, ok, "alice")
+	}
+	if restored.store.Exists("temporary") {
+		t.Fatal("restored temporary exists after DEL")
+	}
+}
+
+func TestServerReplayMissingAOF(t *testing.T) {
+	srv := NewServerWithAOF(":0", filepath.Join(t.TempDir(), "missing.log"))
+	if err := srv.replayAOF(); err != nil {
+		t.Fatalf("replaying missing AOF: %v", err)
+	}
 }
 
 func startTestConn(t *testing.T, srv *Server) (net.Conn, *bufio.Reader, func()) {

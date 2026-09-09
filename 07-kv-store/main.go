@@ -3,8 +3,10 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"log"
 	"net"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -132,10 +134,95 @@ func (s *Store) evict() int {
 type Server struct {
 	store *Store
 	addr  string
+	aof   string
+	aofMu sync.Mutex
 }
 
 func NewServer(addr string) *Server {
-	return &Server{store: NewStore(), addr: addr}
+	return NewServerWithAOF(addr, "aof.log")
+}
+
+// NewServerWithAOF creates a server using the provided append-only log path.
+func NewServerWithAOF(addr, aofPath string) *Server {
+	return &Server{
+		store: NewStore(),
+		addr:  addr,
+		aof:   aofPath,
+	}
+}
+
+// appendAOF appends one complete command and flushes it to disk.
+func (srv *Server) appendAOF(command string) error {
+	srv.aofMu.Lock()
+	defer srv.aofMu.Unlock()
+
+	file, err := os.OpenFile(srv.aof, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	if _, err := io.WriteString(file, command+"\n"); err != nil {
+		return err
+	}
+	return file.Sync()
+}
+
+// replayAOF restores the in-memory store without appending replayed commands.
+func (srv *Server) replayAOF() error {
+	file, err := os.Open(srv.aof)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		parts := strings.Fields(scanner.Text())
+		if len(parts) == 0 {
+			continue
+		}
+
+		switch strings.ToUpper(parts[0]) {
+		case "SET":
+			if len(parts) != 3 && len(parts) != 4 {
+				log.Printf("aof: skipping invalid SET record")
+				continue
+			}
+			var ttl time.Duration
+			if len(parts) == 4 {
+				ttl, err = parseTTLSeconds(parts[3])
+				if err != nil {
+					log.Printf("aof: skipping invalid SET TTL")
+					continue
+				}
+			}
+			srv.store.Set(parts[1], parts[2], ttl)
+		case "DEL":
+			if len(parts) == 2 {
+				srv.store.Delete(parts[1])
+			} else {
+				log.Printf("aof: skipping invalid DEL record")
+			}
+		case "EXPIRE":
+			if len(parts) != 3 {
+				log.Printf("aof: skipping invalid EXPIRE record")
+				continue
+			}
+			ttl, ttlErr := parseTTLSeconds(parts[2])
+			if ttlErr != nil {
+				log.Printf("aof: skipping invalid EXPIRE TTL")
+				continue
+			}
+			srv.store.Expire(parts[1], ttl)
+		default:
+			log.Printf("aof: skipping unknown command %q", parts[0])
+		}
+	}
+	return scanner.Err()
 }
 
 // handleConn parses commands from a single client connection.
@@ -175,13 +262,22 @@ func (srv *Server) handleConn(conn net.Conn) {
 				}
 			}
 			srv.store.Set(parts[1], parts[2], ttl)
+			if err := srv.appendAOF(strings.Join(parts, " ")); err != nil {
+				fmt.Fprintln(conn, "ERR persistence failure")
+				continue
+			}
 			fmt.Fprintln(conn, "OK")
 		case "DEL":
 			if len(parts) != 2 {
 				fmt.Fprintln(conn, "ERR usage: DEL key")
 				continue
 			}
-			srv.store.Delete(parts[1])
+			if srv.store.Delete(parts[1]) {
+				if err := srv.appendAOF(strings.Join(parts, " ")); err != nil {
+					fmt.Fprintln(conn, "ERR persistence failure")
+					continue
+				}
+			}
 			fmt.Fprintln(conn, "OK")
 		case "KEYS":
 			if len(parts) != 1 {
@@ -202,6 +298,10 @@ func (srv *Server) handleConn(conn net.Conn) {
 				continue
 			}
 			if srv.store.Expire(parts[1], seconds) {
+				if err := srv.appendAOF(strings.Join(parts, " ")); err != nil {
+					fmt.Fprintln(conn, "ERR persistence failure")
+					continue
+				}
 				fmt.Fprintln(conn, "OK")
 			} else {
 				fmt.Fprintln(conn, "NIL")
@@ -234,6 +334,10 @@ func parseTTLSeconds(raw string) (time.Duration, error) {
 }
 
 func (srv *Server) Start() error {
+	if err := srv.replayAOF(); err != nil {
+		return fmt.Errorf("replay AOF: %w", err)
+	}
+
 	ln, err := net.Listen("tcp", srv.addr)
 	if err != nil {
 		return err
