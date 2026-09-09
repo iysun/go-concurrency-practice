@@ -115,10 +115,10 @@
 
 #### 07-kv-store（4–5 天）
 
-- [ ] 完善 `DEL` 和 `KEYS` 命令处理
-- [ ] 在 `SET` 命令中解析可选的 TTL 参数
-- [ ] 添加 `EXPIRE key seconds` 命令
-- [ ] 添加 `EXISTS key` 命令
+- [x] 完善 `DEL` 和 `KEYS` 命令处理
+- [x] 在 `SET` 命令中解析可选的 TTL 参数
+- [x] 添加 `EXPIRE key seconds` 命令
+- [x] 添加 `EXISTS key` 命令
 - [ ] （进阶）实现 AOF 追加写持久化：每次写操作追加到 `aof.log`，启动时重放
 
 **完成标志：** 用 `telnet` 或 `nc` 能完整执行 SET/GET/DEL/EXPIRE，TTL 到期自动淘汰。

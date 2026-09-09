@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -31,7 +33,6 @@ func NewStore() *Store {
 }
 
 // Get returns the value for key. Second return is false if missing or expired.
-// TODO: implement
 func (s *Store) Get(key string) (string, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -43,7 +44,6 @@ func (s *Store) Get(key string) (string, bool) {
 }
 
 // Set stores key=value with an optional TTL (0 = no expiry).
-// TODO: implement
 func (s *Store) Set(key, value string, ttl time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -55,7 +55,6 @@ func (s *Store) Set(key, value string, ttl time.Duration) {
 }
 
 // Delete removes a key. Returns true if the key existed.
-// TODO: implement
 func (s *Store) Delete(key string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -64,8 +63,38 @@ func (s *Store) Delete(key string) bool {
 	return ok
 }
 
+// Expire sets a key's TTL. Returns false if the key is missing or expired.
+func (s *Store) Expire(key string, ttl time.Duration) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	e, ok := s.data[key]
+	if !ok {
+		return false
+	}
+	if e.expired() {
+		delete(s.data, key)
+		return false
+	}
+	if ttl == 0 {
+		e.expiresAt = time.Now().Add(-time.Nanosecond)
+	} else {
+		e.expiresAt = time.Now().Add(ttl)
+	}
+	s.data[key] = e
+	return true
+}
+
+// Exists reports whether a key exists and has not expired.
+func (s *Store) Exists(key string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	e, ok := s.data[key]
+	return ok && !e.expired()
+}
+
 // Keys returns all non-expired keys.
-// TODO: implement
 func (s *Store) Keys() []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -98,6 +127,8 @@ func (s *Store) evict() int {
 //	GET key
 //	DEL key
 //	KEYS
+//	EXPIRE key seconds
+//	EXISTS key
 type Server struct {
 	store *Store
 	addr  string
@@ -108,7 +139,6 @@ func NewServer(addr string) *Server {
 }
 
 // handleConn parses commands from a single client connection.
-// TODO: implement full command parsing
 func (srv *Server) handleConn(conn net.Conn) {
 	defer conn.Close()
 	scanner := bufio.NewScanner(conn)
@@ -131,23 +161,76 @@ func (srv *Server) handleConn(conn net.Conn) {
 				fmt.Fprintln(conn, val)
 			}
 		case "SET":
-			// TODO: parse optional TTL argument
-			if len(parts) < 3 {
+			if len(parts) != 3 && len(parts) != 4 {
 				fmt.Fprintln(conn, "ERR usage: SET key value [ttl_seconds]")
 				continue
 			}
-			srv.store.Set(parts[1], parts[2], 0)
+			var ttl time.Duration
+			if len(parts) == 4 {
+				var err error
+				ttl, err = parseTTLSeconds(parts[3])
+				if err != nil {
+					fmt.Fprintln(conn, "ERR invalid ttl")
+					continue
+				}
+			}
+			srv.store.Set(parts[1], parts[2], ttl)
 			fmt.Fprintln(conn, "OK")
 		case "DEL":
-			// TODO: implement
-			fmt.Fprintln(conn, "ERR not implemented")
+			if len(parts) != 2 {
+				fmt.Fprintln(conn, "ERR usage: DEL key")
+				continue
+			}
+			srv.store.Delete(parts[1])
+			fmt.Fprintln(conn, "OK")
 		case "KEYS":
-			// TODO: implement
-			fmt.Fprintln(conn, "ERR not implemented")
+			if len(parts) != 1 {
+				fmt.Fprintln(conn, "ERR usage: KEYS")
+				continue
+			}
+			keys := srv.store.Keys()
+			sort.Strings(keys)
+			fmt.Fprintln(conn, strings.Join(keys, " "))
+		case "EXPIRE":
+			if len(parts) != 3 {
+				fmt.Fprintln(conn, "ERR usage: EXPIRE key seconds")
+				continue
+			}
+			seconds, err := parseTTLSeconds(parts[2])
+			if err != nil {
+				fmt.Fprintln(conn, "ERR invalid ttl")
+				continue
+			}
+			if srv.store.Expire(parts[1], seconds) {
+				fmt.Fprintln(conn, "OK")
+			} else {
+				fmt.Fprintln(conn, "NIL")
+			}
+		case "EXISTS":
+			if len(parts) != 2 {
+				fmt.Fprintln(conn, "ERR usage: EXISTS key")
+				continue
+			}
+			if srv.store.Exists(parts[1]) {
+				fmt.Fprintln(conn, "1")
+			} else {
+				fmt.Fprintln(conn, "0")
+			}
 		default:
 			fmt.Fprintf(conn, "ERR unknown command %q\n", cmd)
 		}
 	}
+}
+
+func parseTTLSeconds(raw string) (time.Duration, error) {
+	seconds, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || seconds < 0 {
+		return 0, fmt.Errorf("invalid ttl")
+	}
+	if seconds > int64((1<<63-1)/int64(time.Second)) {
+		return 0, fmt.Errorf("invalid ttl")
+	}
+	return time.Duration(seconds) * time.Second, nil
 }
 
 func (srv *Server) Start() error {
@@ -160,6 +243,7 @@ func (srv *Server) Start() error {
 	// Background janitor: evict expired keys every 5 seconds
 	go func() {
 		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
 		for range ticker.C {
 			n := srv.store.evict()
 			if n > 0 {
